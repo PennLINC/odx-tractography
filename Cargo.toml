@@ -1,0 +1,17 @@
+[package]
+name = "odx-tractography"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+authors = ["Matt Cieslak <mattcieslak@gmail.com>"]
+license = "MIT OR Apache-2.0"
+description = "Reference-free fixel tractography on ODX datasets: FixelIndex, PTT propagator, Yeh fixel-set tracker, TRX writer, in-place DPF append."
+
+[dependencies]
+odx-rs = { version = "0.1.0", git = "https://github.com/PennLINC/odx-rs", tag = "v0.1.0" }
+trx-rs = { version = "0.1.0", git = "https://github.com/tee-ar-ex/trx-rs", tag = "v0.1.0" }
+kiddo = "5"
+nalgebra = "0.33"
+rayon = "1"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+anyhow = "1"
