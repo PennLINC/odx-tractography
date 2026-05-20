@@ -201,6 +201,79 @@ impl FixelIndex {
         }
     }
 
+    /// Build the index directly from a list of fixel positions and
+    /// unit directions, bypassing any [`OdxDataset`]. Used for
+    /// **synthetic** fixel fields — e.g. one fixel per u-fiber
+    /// parabola apex, direction set to the along-fundus axis — so the
+    /// same PTT engine that traces streamlines can be propagated over
+    /// a derived field.
+    ///
+    /// `id` is the array index; every entry is its own synthetic
+    /// voxel. A deterministic sub-resolution [`jitter_for`] offset is
+    /// added to each position so coincident inputs don't collapse the
+    /// KD-tree. `amplitudes` (optional, parallel to `positions`)
+    /// becomes the per-fixel PTT weight (median-normalised, like the
+    /// ODX path); pass `None` for uniform weight. Directions are
+    /// normalised here; a zero-length direction is kept as-is.
+    pub fn from_handles(
+        positions: &[[f32; 3]],
+        directions: &[[f32; 3]],
+        amplitudes: Option<&[f32]>,
+    ) -> Self {
+        assert_eq!(
+            positions.len(),
+            directions.len(),
+            "from_handles: positions/directions length mismatch"
+        );
+        if let Some(a) = amplitudes {
+            assert_eq!(
+                a.len(),
+                positions.len(),
+                "from_handles: amplitudes/positions length mismatch"
+            );
+        }
+        let nb_peaks = positions.len();
+        let mut handles: Vec<FixelHandle> = Vec::with_capacity(nb_peaks);
+        let id_to_local: Vec<u32> = (0..nb_peaks as u32).collect();
+        let mut tree: KdTree<f32, FixelId, 3, KDTREE_BUCKET, u32> =
+            KdTree::with_capacity(nb_peaks);
+
+        for i in 0..nb_peaks {
+            let id = i as FixelId;
+            let d = directions[i];
+            let dn = {
+                let n = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
+                if n > 1e-9 {
+                    [d[0] / n, d[1] / n, d[2] / n]
+                } else {
+                    d
+                }
+            };
+            let j = jitter_for(id);
+            let pos = [
+                positions[i][0] + j[0],
+                positions[i][1] + j[1],
+                positions[i][2] + j[2],
+            ];
+            let amp = amplitudes.map(|a| a[i]).unwrap_or(f32::NAN);
+            handles.push(FixelHandle {
+                id,
+                world_pos: pos,
+                dir: dn,
+                voxel_idx: id,
+                amplitude: amp,
+            });
+            tree.add(&pos, id);
+        }
+        normalize_amplitudes(&mut handles);
+        Self {
+            handles,
+            id_to_local,
+            tree,
+            nb_peaks: nb_peaks as u32,
+        }
+    }
+
     /// Convenience: build with an Otsu threshold on `dpf/amplitude`,
     /// optionally scaled by `scale` (e.g. 0.5 for a less aggressive
     /// cut). Returns the index plus the threshold value used. If
@@ -447,5 +520,50 @@ impl FixelIndex {
         }
         dists.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
         dists[dists.len() / 2]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn from_handles_normalises_dir_and_queries_spatially() {
+        let pos = vec![[0.0, 0.0, 0.0], [2.0, 0.0, 0.0], [10.0, 0.0, 0.0]];
+        let dir = vec![[5.0, 0.0, 0.0], [0.0, 3.0, 0.0], [0.0, 0.0, 1.0]];
+        let idx = FixelIndex::from_handles(&pos, &dir, None);
+
+        assert_eq!(idx.len(), 3);
+        assert_eq!(idx.nb_peaks(), 3);
+
+        // Direction is unit-normalised.
+        let h1 = idx.handle(1);
+        assert!((h1.dir[1] - 1.0).abs() < 1e-5, "dir not normalised: {:?}", h1.dir);
+        // Sub-resolution jitter only (< JITTER_MAX_MM on each axis).
+        let h0 = idx.handle(0);
+        for a in 0..3 {
+            assert!(h0.world_pos[a].abs() <= JITTER_MAX_MM + 1e-6);
+        }
+
+        // Within 3 mm of the origin: ids 0 and 1 (2 mm away), not id 2.
+        let near: std::collections::HashSet<u32> = idx
+            .nearest_within([0.0, 0.0, 0.0], 3.0)
+            .into_iter()
+            .map(|(id, _)| id)
+            .collect();
+        assert!(near.contains(&0));
+        assert!(near.contains(&1));
+        assert!(!near.contains(&2));
+    }
+
+    #[test]
+    fn from_handles_amplitude_is_median_normalised() {
+        let pos = vec![[0.0, 0.0, 0.0], [5.0, 0.0, 0.0], [10.0, 0.0, 0.0]];
+        let dir = vec![[1.0, 0.0, 0.0]; 3];
+        let amp = [2.0_f32, 4.0, 8.0]; // median 4 → normalised to 0.5/1/2
+        let idx = FixelIndex::from_handles(&pos, &dir, Some(&amp));
+        assert!((idx.handle(0).amplitude - 0.5).abs() < 1e-5);
+        assert!((idx.handle(1).amplitude - 1.0).abs() < 1e-5);
+        assert!((idx.handle(2).amplitude - 2.0).abs() < 1e-5);
     }
 }

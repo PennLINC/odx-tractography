@@ -658,6 +658,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "lin_alg"
+version = "1.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d44e8b977ae7c4843682314ef62f993c1da6451ec17a8c9a45c4279048257bba"
+dependencies = [
+ "num-traits",
+ "paste",
+]
+
+[[package]]
 name = "linux-raw-sys"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -686,6 +696,15 @@ checksum = "a06de3016e9fae57a36fd14dba131fccf49f74b40b7fbdb472f96e361ec71a08"
 dependencies = [
  "autocfg",
  "rawpointer",
+]
+
+[[package]]
+name = "mcubes"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "21305627b2a9263c95af711933a586d40a0ad97c232b28772133f8e6d59686f8"
+dependencies = [
+ "lin_alg",
 ]
 
 [[package]]
@@ -867,6 +886,7 @@ dependencies = [
 [[package]]
 name = "odx-rs"
 version = "0.1.0"
+source = "git+https://github.com/PennLINC/odx-rs?tag=v0.1.0#f83c6bf0726acd4e903ae126fdd82e0fb8f0cfaa"
 dependencies = [
  "bytemuck",
  "clap",
@@ -893,7 +913,11 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "kiddo",
+ "lin_alg",
+ "mcubes",
  "nalgebra",
+ "ndarray 0.16.1",
+ "nifti",
  "odx-rs",
  "rayon",
  "trx-rs",
@@ -1459,6 +1483,7 @@ dependencies = [
 [[package]]
 name = "trx-rs"
 version = "0.1.0"
+source = "git+https://github.com/tee-ar-ex/trx-rs?tag=v0.1.0#0d4b9e2ec63ef7d94ce533d3cbf55c4a2361b58f"
 dependencies = [
  "bytemuck",
  "clap",

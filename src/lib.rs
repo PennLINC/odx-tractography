@@ -27,14 +27,27 @@
 #![warn(rust_2018_idioms)]
 
 pub mod fixel_index;
+pub mod mean_3d;
+pub mod pseudo_surfaces;
 pub mod ptt;
+pub mod qa_otsu;
 pub mod trace;
+pub mod voxel_nifti;
 pub mod writeback;
 
 pub use fixel_index::{FixelHandle, FixelId, FixelIndex};
 pub use ptt::{
     arc_likelihood, arc_likelihood_with, best_arc_likelihood, capture_visited_fixels, data_support,
     frame_at_fixel_handle, prep_propagator, walk as ptt_walk, PtfFrame, PttParams, PttTrajectory,
+};
+pub use pseudo_surfaces::{
+    pseudo_surfaces_from_field, pseudo_surfaces_from_mask, shrink_wrap, split_by_eroded_voxel_cc,
+    split_by_x_sign, PseudoSurfaceHemispheres, PseudoSurfaceMesh, PseudoSurfaceMeshHemispheres,
+    PseudoSurfacePair, PseudoSurfaceParams, ShrinkWrapParams,
+};
+pub use qa_otsu::{
+    compute_otsu_threshold, primary_peak_qa, reduce_dpf_to_voxel, wm_field_from_dpf,
+    wm_field_from_dpv, wm_field_otsu, wm_mask_otsu, DpfReduction, WmField,
 };
 pub use trace::{trace_within_fixels, TraceParams};
 

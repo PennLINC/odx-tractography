@@ -54,6 +54,17 @@ pub struct PttParams {
     /// {-k_max, -k_max/2, 0, +k_max/2, +k_max} on each axis (25
     /// total).
     pub n_k_samples: usize,
+    /// **Fanned probe** radius (mm). When > 0 with `probe_count > 1`,
+    /// each arc sample's data support is averaged over `probe_count`
+    /// points offset by this radius around the arc tangent (in the
+    /// N1/N2 plane) — a probe *tube* instead of a single arc. This
+    /// smooths the spiky, sparse discrete-fixel support that made the
+    /// single-arc stochastic samplers coil. `0` ⇒ single-arc
+    /// (byte-identical to the historical behaviour).
+    pub probe_radius_mm: f32,
+    /// Number of radial offsets in the fanned probe tube (nibrary
+    /// `probeCount`). `1` ⇒ single arc (default; unchanged).
+    pub probe_count: usize,
 }
 
 impl PttParams {
@@ -66,6 +77,8 @@ impl PttParams {
             angular_power: 4,
             k_max: 0.2,
             n_k_samples: 5,
+            probe_radius_mm: 0.0,
+            probe_count: 1,
         }
     }
 }
@@ -213,6 +226,38 @@ pub fn data_support(p: [f32; 3], dir: [f32; 3], idx: &FixelIndex, params: &PttPa
 /// adds reference gating for bundle validation (in `odx-bundles`).
 ///
 /// Does NOT mutate `frame` — walks a local copy.
+/// Data support at one arc sample. With a single probe
+/// (`probe_count <= 1` or `probe_radius_mm <= 0`) this is exactly
+/// `support_fn(p, T)` — byte-identical to the historical single-arc
+/// behaviour. Otherwise it averages support over `probe_count` points
+/// offset by `probe_radius_mm` around the tangent `T` in the N1/N2
+/// plane (a probe *tube*), which smooths the spiky discrete-fixel
+/// posterior.
+#[inline]
+fn fanned_support<F: FnMut([f32; 3], [f32; 3]) -> f32>(
+    p: [f32; 3],
+    f: [[f32; 3]; 3],
+    probe_radius_mm: f32,
+    probe_count: usize,
+    sf: &mut F,
+) -> f32 {
+    if probe_count <= 1 || probe_radius_mm <= 0.0 {
+        return sf(p, f[0]);
+    }
+    let mut s = 0.0_f32;
+    for j in 0..probe_count {
+        let th = std::f32::consts::TAU * j as f32 / probe_count as f32;
+        let (c, sn) = (th.cos(), th.sin());
+        let pj = [
+            p[0] + probe_radius_mm * (c * f[1][0] + sn * f[2][0]),
+            p[1] + probe_radius_mm * (c * f[1][1] + sn * f[2][1]),
+            p[2] + probe_radius_mm * (c * f[1][2] + sn * f[2][2]),
+        ];
+        s += sf(pj, f[0]);
+    }
+    s / probe_count as f32
+}
+
 pub fn arc_likelihood_with<F>(
     frame: &PtfFrame,
     k1: f32,
@@ -232,7 +277,13 @@ where
     let mut p = frame.p;
     let mut f = frame.f;
 
-    let mut total = support_fn(p, f[0]);
+    let mut total = fanned_support(
+        p,
+        f,
+        params.probe_radius_mm,
+        params.probe_count,
+        &mut support_fn,
+    );
 
     for _ in 0..q.saturating_sub(1) {
         let pp = prep_propagator(k1, k2, probe_step);
@@ -252,7 +303,13 @@ where
         let n1_new = normalize(cross(n2_raw, t_new));
         let n2_new = cross(t_new, n1_new);
         f = [t_new, n1_new, n2_new];
-        total += support_fn(p, f[0]);
+        total += fanned_support(
+            p,
+            f,
+            params.probe_radius_mm,
+            params.probe_count,
+            &mut support_fn,
+        );
     }
     total
 }
